@@ -144,8 +144,11 @@ chmod +x "$TTYD_WRAPPER"
 TUNNEL_WRAPPER="$POCKET_HOME/tunnel-run.sh"
 cat > "$TUNNEL_WRAPPER" <<WRAP
 #!/usr/bin/env bash
+# Note: --protocol http2 forces HTTP/2 over TCP 443 instead of QUIC/UDP 7844.
+# QUIC is often mangled on hotel/campus/GFW networks and leaves the tunnel
+# stuck in "control stream encountered a failure" retry loops.
 export PATH="$BREW_BIN_DIR:/usr/bin:/bin:\$PATH"
-exec "$CLOUDFLARED" tunnel --url "http://localhost:$TTYD_PORT" --no-autoupdate 2>&1
+exec "$CLOUDFLARED" tunnel --url "http://localhost:$TTYD_PORT" --protocol http2 --no-autoupdate 2>&1
 WRAP
 chmod +x "$TUNNEL_WRAPPER"
 
