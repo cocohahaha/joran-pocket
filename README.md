@@ -8,10 +8,10 @@ Public HTTPS URL → password-protected web terminal → persistent `tmux` sessi
 iPhone Safari                                    your Mac
    │                                                │
    │  HTTPS (basic auth)                            │
-   │  https://xxx.trycloudflare.com                 │
+   │  https://<random>.lhr.life                     │
    │                                                │
    ▼                                                ▼
-cloudflared Quick Tunnel ──▶ ttyd :8080 ──▶ tmux session 'pocket' ──▶ zsh / claude / whatever
+localhost.run SSH tunnel ──▶ ttyd :8080 ──▶ tmux session 'pocket' ──▶ zsh / claude / whatever
 ```
 
 ---
@@ -100,7 +100,7 @@ If you use [Claude Code](https://docs.claude.com/en/docs/claude-code/overview), 
 |---|---|
 | `tmux` session `pocket` | persistent shell on your Mac; survives everything |
 | `ttyd` (on 127.0.0.1:8080) | serves the tmux session as a web terminal with HTTP Basic Auth |
-| `cloudflared tunnel --url` | exposes that local port to a public `*.trycloudflare.com` URL (no Cloudflare account required) |
+| `ssh -R` to `localhost.run` | exposes that local port to a public `*.lhr.life` HTTPS URL (no account, anonymous tunnel). WebSocket passes through cleanly, which cloudflared Quick Tunnel does NOT do on QUIC-blocked networks. |
 | watcher script | tails tunnel logs, writes new URL to `~/Pocket/current-url.txt`, optionally iMessages it |
 | launchd agents | keep all three alive across login/crash |
 | `~/.tmux.conf` | dark theme, Ctrl-A prefix, mouse mode, two-line status bar with tappable phone keys |
@@ -111,7 +111,7 @@ If you use [Claude Code](https://docs.claude.com/en/docs/claude-code/overview), 
 
 - **HTTP Basic Auth** in front of `ttyd` — credentials saved to `~/Pocket/auth.txt` (mode 600)
 - **HTTPS in transit** — Cloudflare terminates TLS; traffic between the tunnel edge and your Mac is over the Cloudflared connection
-- **Unguessable URL** — `https://<random-words>.trycloudflare.com`
+- **Unguessable URL** — `https://<random-hex>.lhr.life`
 - **Local-only ttyd** — binds to `127.0.0.1`, never exposed directly
 - **No cloud account** — the Quick Tunnel is anonymous; nothing to compromise if this computer is compromised other than... this computer
 

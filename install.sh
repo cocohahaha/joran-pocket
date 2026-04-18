@@ -29,7 +29,7 @@ fi
 
 # --- Deps ---
 missing=()
-for b in tmux ttyd cloudflared; do
+for b in tmux ttyd; do
   command -v "$b" >/dev/null 2>&1 || missing+=("$b")
 done
 
