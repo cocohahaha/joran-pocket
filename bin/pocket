@@ -171,7 +171,23 @@ cmd_status() {
 
 cmd="${1:-}"; shift || true
 case "$cmd" in
-  ""|share)    cmd_share "$@" ;;
+  "")
+    cat <<'HINT' >&2
+pocket 老命令（ttyd + 公网 tunnel 路线）已不再是推荐入口。
+新路线（Tailscale + SSH）没有 pocket 命令，直接用 Termius/Blink 连就行。
+
+老命令还留着给你排错用：
+  pocket share     强制再起一个 lhr.life URL（不稳定，不推荐）
+  pocket stop      停掉老 tunnel
+  pocket status    看老服务状态
+  pocket help      完整子命令列表
+
+如果你想跑新的 Tailscale 安装路线，在 joran-pocket 仓库目录里跑：
+  bash install-tailscale.sh
+HINT
+    exit 0
+    ;;
+  share)       cmd_share "$@" ;;
   stop)        cmd_stop ;;
   stop-all)    cmd_stop_all ;;
   status)      cmd_status ;;
