@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>JORAN Pocket — 手机远程指挥 Claude Code</title>
+<meta name="description" content="浏览器打开就能用。WebRTC P2P 直连你的 Mac 终端，零账号、零订阅、零 VPN。" />
+<style>
+  :root { color-scheme: dark; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: radial-gradient(ellipse at top, #1a1d25 0%, #0b0d12 60%);
+    color: #e6e6e6;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+    padding: 48px 24px;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  .brand {
+    color: #f97316;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    font-size: 14px;
+    margin-bottom: 8px;
+  }
+  h1 {
+    font-size: clamp(32px, 6vw, 48px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    margin-bottom: 16px;
+  }
+  h1 .accent { color: #f97316; }
+  .lede {
+    font-size: 17px;
+    color: #9ca3af;
+    max-width: 540px;
+    margin-bottom: 40px;
+  }
+  h2 {
+    margin-top: 48px;
+    margin-bottom: 16px;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  code, pre {
+    font-family: "JetBrains Mono", "SF Mono", Menlo, monospace;
+    font-size: 13px;
+  }
+  pre {
+    background: #111319;
+    border: 1px solid #1e1e1e;
+    border-radius: 10px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    color: #e6e6e6;
+  }
+  .inline-code {
+    background: #1a1d25;
+    padding: 2px 7px;
+    border-radius: 5px;
+    color: #f97316;
+    font-size: 0.9em;
+  }
+  ul { padding-left: 20px; margin-bottom: 16px; }
+  li { color: #9ca3af; margin-bottom: 8px; }
+  li strong { color: #e6e6e6; font-weight: 500; }
+  .feat {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin: 24px 0;
+  }
+  .card {
+    background: #111319;
+    border: 1px solid #1e1e1e;
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .card h3 {
+    font-size: 14px;
+    margin-bottom: 8px;
+    color: #f97316;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+  }
+  .card p { color: #9ca3af; font-size: 14px; }
+  .pill {
+    display: inline-block;
+    background: rgba(249, 115, 22, 0.1);
+    color: #f97316;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 500;
+    margin-right: 6px;
+  }
+  a { color: #60a5fa; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  footer {
+    margin-top: 80px;
+    padding-top: 24px;
+    border-top: 1px solid #1e1e1e;
+    color: #525252;
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="brand">JORAN POCKET</div>
+  <h1>手机里的 <span class="accent">Claude Code</span><br>——躺着就能指挥。</h1>
+  <p class="lede">
+    在你 Mac 终端里跑 <code class="inline-code">pocket</code>，
+    手机 Safari 打开蹦出的网址，
+    终端实时投屏，compose 栏打字、大按钮点 y/n。
+    <strong>WebRTC P2P 直连</strong>，没有中间服务器看到你的终端内容。
+  </p>
+
+  <div class="feat">
+    <div class="card">
+      <h3>零账号</h3>
+      <p>终端用户不注册任何东西。下二进制，开终端，扫码。</p>
+    </div>
+    <div class="card">
+      <h3>零 VPN 冲突</h3>
+      <p>不用 Tailscale / WireGuard，不占手机 VPN 槽位，Astrill 等 VPN 可以同时跑。</p>
+    </div>
+    <div class="card">
+      <h3>端到端加密</h3>
+      <p>WebRTC DataChannel 自带 DTLS 加密；信令服务器看不到你的终端字节。</p>
+    </div>
+    <div class="card">
+      <h3>P2P 直连</h3>
+      <p>ICE 打洞走 STUN；家用网络下通常 &lt;10ms 延迟。</p>
+    </div>
+  </div>
+
+  <h2>三步上手</h2>
+
+  <ol style="padding-left: 20px; color: #9ca3af;">
+    <li style="margin-bottom: 12px;">
+      <strong>装 helper</strong>（Mac 一次性）：
+      <pre>curl -fsSL https://joran-pocket.pages.dev/install.sh | bash</pre>
+    </li>
+    <li style="margin-bottom: 12px;">
+      <strong>每次用时</strong>，Mac 终端：
+      <pre>pocket</pre>
+      终端里会打印 6 位码，比如 <code class="inline-code">EK7P2M</code>
+    </li>
+    <li>
+      <strong>iPhone Safari</strong> 打开
+      <code class="inline-code">https://joran-pocket.pages.dev/p/EK7P2M</code>
+      →WebRTC 握手→终端出现。分享→添加到主屏幕，下次一键进。
+    </li>
+  </ol>
+
+  <h2>工作原理</h2>
+  <p style="color: #9ca3af; margin-bottom: 12px;">
+    Mac 上的 <code class="inline-code">pocket</code> helper 启一个 <code class="inline-code">tmux</code> 会话让 Claude Code 跑在里面。
+    helper 连信令服务器（Cloudflare Worker）注册一个 6 位一次性码。
+    手机 PWA 输入码→通过同一个 Worker 中转 SDP/ICE 握手信号。
+    握手完成后，终端字节流走 <strong>WebRTC DataChannel 点对点</strong>——
+    中继服务器看不到，本机和手机之间直连。
+  </p>
+
+  <h2>技术栈</h2>
+  <div>
+    <span class="pill">Go + pion/webrtc</span>
+    <span class="pill">Cloudflare Workers</span>
+    <span class="pill">React + xterm.js</span>
+    <span class="pill">MIT OSS</span>
+  </div>
+
+  <h2>自己部署</h2>
+  <pre>git clone https://github.com/cocohahaha/joran-pocket
+cd joran-pocket
+# 部署你自己的信令 Worker（免费额度内）
+cd signaling && npx wrangler deploy
+# 部署 PWA 到 Cloudflare Pages
+cd ../pwa && npm run build && npx wrangler pages deploy dist
+# 本地构建 helper（或直接 brew install，发布后提供）
+cd ../helper && go build -o pocket .</pre>
+
+  <footer>
+    <a href="https://github.com/cocohahaha/joran-pocket">GitHub</a>
+    &nbsp;·&nbsp;
+    MIT License
+    &nbsp;·&nbsp;
+    一个 <span style="color: #f97316;">JORAN</span> 产品
+  </footer>
+</div>
+</body>
+</html>

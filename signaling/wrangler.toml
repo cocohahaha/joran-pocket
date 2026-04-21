@@ -1,0 +1,24 @@
+name = "joran-pocket-signaling"
+main = "src/index.ts"
+compatibility_date = "2025-03-15"
+
+# Durable Object class for per-session pairing state.
+[[durable_objects.bindings]]
+name = "SESSION"
+class_name = "PairingSession"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["PairingSession"]
+
+# Optional: custom subdomain on workers.dev. User runs `wrangler deploy`
+# on their own Cloudflare account; the resulting URL will be something
+# like https://joran-pocket-signaling.<user-cf-subdomain>.workers.dev
+#
+# To bind a custom domain (e.g., sig.yourdomain.com), uncomment:
+# [[routes]]
+# pattern = "sig.yourdomain.com/*"
+# custom_domain = true
+
+[observability]
+enabled = true

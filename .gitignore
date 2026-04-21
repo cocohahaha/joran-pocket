@@ -1,4 +1,23 @@
+# macOS
 .DS_Store
-*.log
-*.bak
+
+# Node
 node_modules/
+dist/
+.wrangler/
+.dev.vars
+
+# Go
+helper/pocket
+helper/*.exe
+/pocket
+/tmp/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Env / secrets
+.env
+.env.local
