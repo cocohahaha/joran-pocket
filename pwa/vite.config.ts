@@ -7,6 +7,12 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
+      workbox: {
+        // New SW takes over on the next page load, no need to wait for
+        // user to close all tabs. Matters after auth flow changes.
+        skipWaiting: true,
+        clientsClaim: true,
+      },
       includeAssets: ["icon-192.png", "icon-512.png"],
       manifest: {
         name: "JORAN Pocket",

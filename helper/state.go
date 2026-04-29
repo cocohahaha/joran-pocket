@@ -22,7 +22,9 @@ type ClaudeEvent struct {
 //
 // Regexes here are conservative — better to miss an event than misfire one
 // (misfires surprise the user with phantom approval prompts).
-func RunStateWatcher(ctx context.Context, session string, emit func(ClaudeEvent)) {
+//
+// `emit` accepts any JSON-serializable struct; callers marshal + ship.
+func RunStateWatcher(ctx context.Context, session string, emit func(any)) {
 	var lastType string
 	var lastSeen string
 

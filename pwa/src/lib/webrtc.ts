@@ -96,6 +96,14 @@ export class Peer {
     this.pty.send(JSON.stringify({ type: "resize", cols, rows }));
   }
 
+  // Phone -> Mac: control messages for tmux (select window, etc.) sent on
+  // the sidechannel DC so they don't compete with terminal byte traffic.
+  sendControl(msg: object): boolean {
+    if (!this.side || this.side.readyState !== "open") return false;
+    this.side.send(JSON.stringify(msg));
+    return true;
+  }
+
   close() {
     try { this.pty?.close(); } catch {}
     try { this.side?.close(); } catch {}

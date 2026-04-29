@@ -22,6 +22,8 @@ export interface SignalingCallbacks {
   onDone?: () => void;
   onClose?: (code: number, reason: string) => void;
   onError?: (e: Event) => void;
+  onOpen?: () => void;
+  onAnyMessage?: (type: string) => void;
 }
 
 export class Signaling {
@@ -41,7 +43,7 @@ export class Signaling {
       this.ws = ws;
 
       ws.addEventListener("open", () => {
-        // Flush anything queued before open.
+        this.cbs.onOpen?.();
         for (const m of this.queue) ws.send(JSON.stringify(m));
         this.queue = [];
         resolve();
@@ -49,6 +51,7 @@ export class Signaling {
       ws.addEventListener("message", (e) => {
         try {
           const msg = JSON.parse(e.data as string) as SignalingMsg;
+          this.cbs.onAnyMessage?.(msg.type);
           this.dispatch(msg);
         } catch {
           /* ignore malformed */

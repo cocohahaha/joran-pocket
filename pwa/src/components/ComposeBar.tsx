@@ -15,7 +15,14 @@ export function ComposeBar({ onSendLine, onSendKey }: Props) {
 
   const send = () => {
     const t = text;
-    if (!t.length) return;
+    if (!t.length) {
+      // Empty textarea: treat as plain Enter submit. Handles the case
+      // where the user typed directly into Claude via a remote keyboard
+      // (or the textarea glitched out) — tapping ➤ should still push
+      // the current terminal line just like Enter does on a real keyboard.
+      onSendKey("\r");
+      return;
+    }
     onSendLine(t);
     setText("");
     ref.current?.focus();
@@ -38,12 +45,11 @@ export function ComposeBar({ onSendLine, onSendKey }: Props) {
           onInput={(e) => autoGrow(e.currentTarget)}
         />
         <button
-          style={{ ...styles.send, opacity: text.length ? 1 : 0.4 }}
+          style={styles.send}
           onClick={send}
-          disabled={!text.length}
-          aria-label="Send"
+          aria-label={text.length ? "Send prompt" : "Send Enter"}
         >
-          ➤
+          {text.length ? "➤" : "⏎"}
         </button>
       </div>
     </div>
@@ -51,24 +57,51 @@ export function ComposeBar({ onSendLine, onSendKey }: Props) {
 }
 
 function QuickKeys({ onKey }: { onKey: (k: string) => void }) {
-  const keys: Array<{ label: string; key: string }> = [
-    { label: "⎋", key: "\x1b" },    // Esc
-    { label: "⇥", key: "\t" },      // Tab
+  // Row 1: Claude Code power keys + core nav. Shift-Tab cycles Claude's mode
+  // (plan / accept-edits / default) which is the most-used shortcut.
+  const row1: Array<{ label: string; key: string; hint?: string; wide?: boolean }> = [
+    { label: "⇧⇥", key: "\x1b[Z", hint: "Shift+Tab  Claude 切模式", wide: true },
+    { label: "⎋",  key: "\x1b",   hint: "Esc 取消" },
+    { label: "⇥",  key: "\t",     hint: "Tab 补全" },
+    { label: "⏎",  key: "\r",     hint: "Enter 回车" },
+    { label: "⌫",  key: "\x7f",   hint: "退格" },
+    { label: "^C", key: "\x03",   hint: "Ctrl-C 中断" },
+    { label: "^D", key: "\x04",   hint: "Ctrl-D EOF" },
+    { label: "^L", key: "\x0c",   hint: "Ctrl-L 清屏" },
+  ];
+  // Row 2: cursor navigation.
+  const row2: Array<{ label: string; key: string }> = [
     { label: "↑", key: "\x1b[A" },
     { label: "↓", key: "\x1b[B" },
     { label: "←", key: "\x1b[D" },
     { label: "→", key: "\x1b[C" },
-    { label: "⏎", key: "\r" },
-    { label: "Ctrl-C", key: "\x03" },
+    { label: "Home", key: "\x1b[H" },
+    { label: "End",  key: "\x1b[F" },
+    { label: "PgUp", key: "\x1b[5~" },
+    { label: "PgDn", key: "\x1b[6~" },
   ];
   return (
-    <div style={styles.qkRow}>
-      {keys.map((k) => (
-        <button key={k.label} style={styles.qkBtn} onClick={() => onKey(k.key)}>
-          {k.label}
-        </button>
-      ))}
-    </div>
+    <>
+      <div style={styles.qkRow}>
+        {row1.map((k) => (
+          <button
+            key={k.label}
+            style={{ ...styles.qkBtn, ...(k.wide ? styles.qkBtnWide : null) }}
+            onClick={() => onKey(k.key)}
+            aria-label={k.hint ?? k.label}
+          >
+            {k.label}
+          </button>
+        ))}
+      </div>
+      <div style={styles.qkRow}>
+        {row2.map((k) => (
+          <button key={k.label} style={styles.qkBtn} onClick={() => onKey(k.key)}>
+            {k.label}
+          </button>
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -91,13 +124,13 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     overflowX: "auto",
     gap: 6,
-    padding: "8px 10px",
+    padding: "6px 10px",
     scrollbarWidth: "none",
   },
   qkBtn: {
     flex: "0 0 auto",
     minWidth: 44,
-    padding: "9px 12px",
+    padding: "10px 12px",
     background: "var(--surface-elev)",
     borderRadius: 8,
     color: "var(--accent)",
@@ -105,6 +138,14 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 14,
     fontWeight: 600,
     border: "1px solid var(--border)",
+  },
+  qkBtnWide: {
+    // Prominent "Shift+Tab / cycle mode" since that's the most-requested
+    // Claude Code shortcut.
+    minWidth: 64,
+    background: "rgba(249, 115, 22, 0.18)",
+    color: "var(--accent)",
+    borderColor: "rgba(249, 115, 22, 0.5)",
   },
   row: {
     display: "flex",

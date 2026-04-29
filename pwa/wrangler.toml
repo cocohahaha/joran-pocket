@@ -1,0 +1,13 @@
+name = "joran-pocket"
+compatibility_date = "2025-03-15"
+pages_build_output_dir = "dist"
+
+# Durable Object binding. The DO class itself is defined + migrated in the
+# sibling Worker project (signaling/), which is deployed separately via
+# `wrangler deploy` in that directory. Pages Functions access it via
+# `env.SESSION`; end-user browsers only ever talk to *.pages.dev, not the
+# workers.dev subdomain where the DO Worker physically lives.
+[[durable_objects.bindings]]
+name = "SESSION"
+class_name = "PairingSession"
+script_name = "joran-pocket-signaling"

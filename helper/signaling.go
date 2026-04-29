@@ -25,13 +25,13 @@ func registerOrReuse(ctx context.Context, signalingHTTP, existingCode string) (c
 		if strings.HasPrefix(signalingHTTP, "http://") {
 			scheme = "ws"
 		}
-		return existingCode, fmt.Sprintf("%s://%s/pair/%s/ws?role=host", scheme, host, existingCode), nil
+		return existingCode, fmt.Sprintf("%s://%s/api/pair/%s/ws?role=host", scheme, host, existingCode), nil
 	}
 
 	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(cctx, http.MethodPost, signalingHTTP+"/register", nil)
+	req, err := http.NewRequestWithContext(cctx, http.MethodPost, signalingHTTP+"/api/register", nil)
 	if err != nil {
 		return "", "", err
 	}

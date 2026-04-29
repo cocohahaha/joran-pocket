@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<meta name="theme-color" content="#0b0d12" />
+<title>Pocket — diag</title>
+<style>
+  body {
+    margin:0; padding:24px; min-height:100dvh; background:#0b0d12; color:#e6e6e6;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+    font-size:14px; line-height:1.5; box-sizing:border-box;
+  }
+  h1 { font-size:17px; margin:0 0 14px; color:#f97316; letter-spacing:0.05em; }
+  .step {
+    background:#111319; border:1px solid #1e1e1e; border-radius:10px;
+    padding:14px 16px; margin-bottom:10px;
+  }
+  .step.ok    { border-color:#22c55e; }
+  .step.err   { border-color:#ef4444; }
+  .step.pend  { border-color:#f97316; }
+  .step b { display:block; margin-bottom:4px; }
+  .ok  b { color:#22c55e; }
+  .err b { color:#ef4444; }
+  .pend b { color:#f97316; }
+  pre {
+    margin:6px 0 0; background:#0b0d12; border:1px solid #1e1e1e; border-radius:6px;
+    padding:8px 10px; font-family:"JetBrains Mono", "SF Mono", monospace;
+    font-size:12px; white-space:pre-wrap; word-break:break-all; color:#9ca3af;
+  }
+  button {
+    padding:14px 20px; background:#f97316; color:#0b0d12; border:0; border-radius:10px;
+    font-size:16px; font-weight:700; margin-top:10px;
+  }
+  input {
+    padding:12px 14px; background:#1a1d25; color:#e6e6e6; border:1px solid #1e1e1e;
+    border-radius:8px; font-size:16px; font-family:"JetBrains Mono", monospace;
+    width:180px; text-align:center; letter-spacing:0.15em; font-weight:600;
+  }
+  label { display:flex; align-items:center; gap:10px; margin:10px 0; }
+</style>
+</head>
+<body>
+<h1>🔧 JORAN POCKET — 链路诊断</h1>
+<p style="color:#9ca3af;">独立 HTML 页面，不经过 PWA 的 Service Worker / React，直接测试浏览器→信令 Worker 的连通性。</p>
+
+<label>
+  配对码：
+  <input id="code" placeholder="ABC123" maxlength="8" autocapitalize="characters" autocomplete="off" spellcheck="false">
+</label>
+<button id="run">开始测试</button>
+
+<div id="out" style="margin-top:16px;"></div>
+
+<script>
+// Signaling lives at the same origin as this page (Pages Functions under /api/*).
+const SIG = location.origin;
+const out = document.getElementById("out");
+function step(title, kind, detail) {
+  const d = document.createElement("div");
+  d.className = "step " + kind;
+  d.innerHTML = "<b>" + title + "</b>" + (detail ? "<pre>" + detail + "</pre>" : "");
+  out.appendChild(d);
+  return d;
+}
+function setStep(el, kind, detail) {
+  el.className = "step " + kind;
+  if (detail) {
+    let pre = el.querySelector("pre");
+    if (!pre) { pre = document.createElement("pre"); el.appendChild(pre); }
+    pre.textContent = detail;
+  }
+}
+
+function run() {
+  out.innerHTML = "";
+  const codeInput = document.getElementById("code").value.trim().toUpperCase().replace(/[^A-Z0-9]/g,"");
+  if (codeInput.length < 4) { step("请先填配对码（从 Mac 终端 pocket 命令的输出里复制）", "err"); return; }
+
+  // Step 1: plain HTTPS GET /api/health
+  const s1 = step("1. 测试 HTTPS — GET " + SIG + "/api/health", "pend");
+  fetch(SIG + "/api/health").then(r => r.json()).then(j => {
+    if (j && j.ok) setStep(s1, "ok", JSON.stringify(j));
+    else setStep(s1, "err", "响应不是 {ok:true}：" + JSON.stringify(j));
+  }).catch(e => setStep(s1, "err", "fetch 失败：" + e.message));
+
+  // Step 2: open WebSocket
+  setTimeout(() => {
+    const wssUrl = SIG.replace(/^https/, "wss") + "/api/pair/" + codeInput + "/ws?role=guest";
+    const s2 = step("2. 测试 WebSocket — " + wssUrl, "pend");
+    let helloSeen = false, offerSeen = false;
+    const t0 = Date.now();
+    let ws;
+    try { ws = new WebSocket(wssUrl); }
+    catch (e) { setStep(s2, "err", "WebSocket 构造失败：" + e.message); return; }
+
+    ws.onopen = () => {
+      setStep(s2, "ok", "WS open @ " + (Date.now()-t0) + "ms。等 Worker 发 hello…");
+    };
+    ws.onmessage = ev => {
+      let msg;
+      try { msg = JSON.parse(ev.data); } catch { setStep(s2, "err", "收到不是 JSON 的数据：" + ev.data); return; }
+      if (msg.type === "hello") {
+        helloSeen = true;
+        step("3. 收到 Worker hello（你被分配为 " + msg.role + "）", "ok", JSON.stringify(msg));
+      }
+      if (msg.type === "offer") {
+        offerSeen = true;
+        step("4. 收到 Mac helper 发的 offer — 链路完整 ✓", "ok", "SDP 长度 " + (msg.sdp||"").length + " 字节");
+      }
+    };
+    ws.onerror = ev => {
+      setStep(s2, "err", "WebSocket 错误事件（无详情，通常是连接失败/握手失败）");
+    };
+    ws.onclose = ev => {
+      const info = "close code=" + ev.code + " reason=" + (ev.reason||"(none)") + " clean=" + ev.wasClean;
+      if (helloSeen && offerSeen) {
+        step("5. 诊断结论：✅ 链路完全正常。问题在 PWA 那边（可能是 Service Worker 缓存了旧版本）。", "ok",
+             "修复：iPhone Safari 无痕模式打开，或设置→Safari→清除历史和网站数据。");
+      } else if (helloSeen && !offerSeen) {
+        step("5. 诊断结论：⚠️ WSS 通了、Worker 通了，但 Mac helper 没发 offer — helper 可能没在跑。", "err", info);
+      } else {
+        step("5. 诊断结论：❌ WebSocket 无法建立。Safari → 信令 Worker 这条路不通。", "err",
+             info + "\n可能原因：\n• 网络在屏蔽 workers.dev 子域\n• WebSocket/TLS 兼容问题\n• Cloudflare 侧配置");
+      }
+    };
+
+    setTimeout(() => { try { ws.close(); } catch {} }, 12000);
+  }, 1500);
+}
+
+document.getElementById("run").addEventListener("click", run);
+// Auto-fill code from URL if present (?code=XXX)
+const u = new URLSearchParams(location.search);
+if (u.get("code")) document.getElementById("code").value = u.get("code").toUpperCase();
+</script>
+</body>
+</html>

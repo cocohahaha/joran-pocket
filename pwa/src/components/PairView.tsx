@@ -23,7 +23,9 @@ export function PairView({ initialCode, onPair, error }: Props) {
           </span>{" "}
           POCKET
         </div>
-        <div style={styles.tagline}>在你 Mac 的终端里输 <code style={styles.inline}>pocket</code> 获取配对码</div>
+        <div style={styles.tagline}>
+          在你 Mac 的终端里输 <code style={styles.inline}>pocket attach</code> 获取配对码
+        </div>
 
         <label style={styles.label}>
           <span>6 位配对码</span>
@@ -47,10 +49,6 @@ export function PairView({ initialCode, onPair, error }: Props) {
         </button>
 
         {error && <div style={styles.error}>{error}</div>}
-
-        <div style={styles.hint}>
-          配对码 5 分钟内有效。不分享这个码给别人。
-        </div>
       </div>
     </div>
   );
@@ -129,11 +127,5 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid rgba(239, 68, 68, 0.3)",
     borderRadius: 10,
     fontSize: 13,
-  },
-  hint: {
-    color: "var(--text-muted)",
-    fontSize: 12,
-    textAlign: "center",
-    marginTop: 12,
   },
 };

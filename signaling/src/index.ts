@@ -20,7 +20,7 @@
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // excludes I,O,0,1 for readability
 const CODE_LENGTH = 6;
 const MAX_IDLE_MS = 60_000;
-const MAX_UNPAIRED_MS = 5 * 60_000;
+const MAX_UNPAIRED_MS = 60 * 60_000; // 1 hour — generous window so users don't race the clock
 const MAX_MSG_BYTES = 64 * 1024; // refuse anything weirdly large
 
 interface Env {
@@ -154,9 +154,14 @@ export class PairingSession {
 
     // Tell the new arrival who they are.
     this.send(role, { type: "hello", role });
-    // Tell the OTHER peer (if any) that a new one joined — don't echo back.
     const other: Role = role === "host" ? "guest" : "host";
-    this.send(other, { type: "peer-joined", role });
+    // Tell the OTHER peer that someone joined. If the OTHER peer was already
+    // here when this new one connected, the new one also needs to be told —
+    // otherwise whoever connects second never learns their counterpart exists.
+    if (this.peers.has(other)) {
+      this.send(other, { type: "peer-joined", role });
+      this.send(role, { type: "peer-joined", role: other });
+    }
 
     server.addEventListener("message", (evt) => {
       peer.lastSeen = Date.now();
@@ -187,16 +192,20 @@ export class PairingSession {
 
     server.addEventListener("close", () => {
       this.peers.delete(role);
-      const other: Role = role === "host" ? "guest" : "host";
-      this.send(other, { type: "peer-left", role });
-      if (this.peers.size === 0) this.shutdown();
+      const other2: Role = role === "host" ? "guest" : "host";
+      this.send(other2, { type: "peer-left", role });
+      // Do NOT shutdown immediately on 0 peers. Host & guest may reconnect
+      // with the same pairing code (auto-reconnect on transient failures).
+      // The alarm will clean up after MAX_UNPAIRED_MS of no activity.
     });
     server.addEventListener("error", () => {
       this.peers.delete(role);
     });
 
-    // Reset the auto-shutdown alarm on activity.
-    await this.state.storage.setAlarm(Date.now() + MAX_IDLE_MS);
+    // Reset the auto-shutdown alarm: check once a minute while waiting for
+    // the other peer; once per 60s while paired.
+    const next = this.peers.size < 2 ? 60_000 : 60_000;
+    await this.state.storage.setAlarm(Date.now() + next);
 
     return new Response(null, { status: 101, webSocket: pair[0] });
   }
@@ -215,16 +224,23 @@ export class PairingSession {
 
   async alarm() {
     const now = Date.now();
-    const idle = this.peers.size === 0 ? MAX_IDLE_MS : 30_000;
-    // Force-close anyone hanging around forever.
-    const expired = now - this.createdAt > MAX_UNPAIRED_MS && this.peers.size < 2;
-    const quiet = [...this.peers.values()].every(p => now - p.lastSeen > idle);
+    const IDLE_THRESHOLD_MS = 10 * 60_000; // 10 min silence = dead
 
-    if (expired || quiet || this.peers.size === 0) {
-      this.shutdown();
+    // If nobody's connected at all and the session is more than a minute
+    // old, garbage-collect. (One-minute grace period lets host reconnect
+    // after transient WebSocket drops.)
+    if (this.peers.size === 0) {
+      if (now - this.createdAt > 60_000) { this.shutdown(); return; }
     } else {
-      await this.state.storage.setAlarm(Date.now() + MAX_IDLE_MS);
+      // Peers are connected: only kill if EVERY peer has been silent past
+      // IDLE_THRESHOLD_MS. With helper pinging every 25s, this never fires
+      // while the Mac-side process is alive — so the pairing URL stays
+      // valid for the entire lifetime of the helper.
+      const everyoneQuiet = [...this.peers.values()].every(p => now - p.lastSeen > IDLE_THRESHOLD_MS);
+      if (everyoneQuiet) { this.shutdown(); return; }
     }
+    // Reschedule for next check.
+    await this.state.storage.setAlarm(now + 60_000);
   }
 
   private shutdown() {

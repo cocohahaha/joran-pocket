@@ -15,6 +15,31 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
+// safeWS wraps a gorilla websocket with a mutex so multiple goroutines
+// (keepalive ticker, ICE candidate callback, main flow) can send frames
+// without racing. gorilla's Conn is NOT safe for concurrent Write.
+type safeWS struct {
+	conn *websocket.Conn
+	mu   sync.Mutex
+}
+
+func (s *safeWS) WriteJSON(v any) error {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	return s.conn.WriteMessage(websocket.TextMessage, data)
+}
+
+func (s *safeWS) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.conn.Close()
+}
+
 // Pair drives one full pairing session:
 //  - connect to signaling WSS
 //  - wait for phone (guest) peer to arrive
@@ -34,10 +59,11 @@ func Pair(ctx context.Context, wssURL string, pty *tmuxPty, sessionName string) 
 	}
 	hdr := http.Header{}
 	hdr.Set("User-Agent", "joran-pocket-helper/0.1")
-	ws, _, err := dialer.DialContext(pctx, wssURL, hdr)
+	rawWS, _, err := dialer.DialContext(pctx, wssURL, hdr)
 	if err != nil {
 		return fmt.Errorf("dial signaling: %w", err)
 	}
+	ws := &safeWS{conn: rawWS}
 	defer ws.Close()
 
 	// Build PeerConnection with public STUN servers.
@@ -76,19 +102,21 @@ func Pair(ctx context.Context, wssURL string, pty *tmuxPty, sessionName string) 
 		}
 		cand := c.ToJSON()
 		msg := map[string]any{"type": "ice", "candidate": cand}
-		sendJSON(ws, msg)
+		_ = ws.WriteJSON(msg)
 	})
 
 	pc.OnICEConnectionStateChange(func(s webrtc.ICEConnectionState) {
-		if *flagVerbose {
-			log.Printf("ICE state: %s", s.String())
-		}
+		log.Printf("ICE state: %s", s.String())
 	})
 	pc.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
 		log.Printf("peer state: %s", s.String())
+		// `disconnected` is a RECOVERABLE state — ICE momentarily lost path
+		// (phone locking, Wi-Fi/cellular handoff, tab backgrounding for a
+		// few seconds). WebRTC tries to re-establish and will transition
+		// back to `connected`. Only declare the session truly dead on
+		// `failed` or `closed`.
 		if s == webrtc.PeerConnectionStateFailed ||
-			s == webrtc.PeerConnectionStateClosed ||
-			s == webrtc.PeerConnectionStateDisconnected {
+			s == webrtc.PeerConnectionStateClosed {
 			cancel()
 		}
 	})
@@ -101,21 +129,19 @@ func Pair(ctx context.Context, wssURL string, pty *tmuxPty, sessionName string) 
 		log.Printf("pty DataChannel opened")
 	})
 	ptyDC.OnMessage(func(m webrtc.DataChannelMessage) {
-		// Phone -> Mac: user keystrokes or resize.
 		if m.IsString {
-			// Control JSON frames come as text; data as binary.
 			var ctl struct {
-				Type    string `json:"type"`
-				Cols    uint16 `json:"cols"`
-				Rows    uint16 `json:"rows"`
-				Data    string `json:"data,omitempty"`
+				Type string `json:"type"`
+				Cols uint16 `json:"cols"`
+				Rows uint16 `json:"rows"`
+				Data string `json:"data,omitempty"`
 			}
 			if err := json.Unmarshal(m.Data, &ctl); err != nil {
 				return
 			}
 			switch ctl.Type {
 			case "resize":
-				_ = pty.Resize(ctl.Cols, ctl.Rows)
+				// Helper-driven pane sizing (RunPaneSizeWatcher). Ignore.
 			case "input":
 				_, _ = pty.Write([]byte(ctl.Data))
 			}
@@ -124,14 +150,63 @@ func Pair(ctx context.Context, wssURL string, pty *tmuxPty, sessionName string) 
 		_, _ = pty.Write(m.Data)
 	})
 
-	// Start piping PTY bytes out to the phone as soon as the DC opens.
+	// ---- DC: sidechannel (Claude state + tmux windows + control) ----
+	sideOpen := make(chan struct{})
+	var sideOnce sync.Once
+	sideDC.OnOpen(func() {
+		sideOnce.Do(func() { close(sideOpen) })
+		log.Printf("sideDC opened")
+	})
+	emitter := func(ev any) {
+		b, err := json.Marshal(ev)
+		if err != nil {
+			return
+		}
+		_ = sideDC.SendText(string(b))
+	}
+	sideDC.OnMessage(func(m webrtc.DataChannelMessage) {
+		if !m.IsString {
+			return
+		}
+		var env struct {
+			Type  string `json:"type"`
+			Index int    `json:"index,omitempty"`
+			Name  string `json:"name,omitempty"`
+		}
+		if err := json.Unmarshal(m.Data, &env); err != nil {
+			return
+		}
+		switch env.Type {
+		case "select_window":
+			if err := SelectWindow(sessionName, env.Index); err != nil {
+				log.Printf("select-window %d failed: %v", env.Index, err)
+			}
+		case "new_window":
+			if err := NewWindow(sessionName); err != nil {
+				log.Printf("new-window failed: %v", err)
+			}
+		case "kill_window":
+			if err := KillWindow(sessionName, env.Index); err != nil {
+				log.Printf("kill-window %d failed: %v", env.Index, err)
+			}
+		case "rename_window":
+			if err := RenameWindow(sessionName, env.Index, env.Name); err != nil {
+				log.Printf("rename-window %d failed: %v", env.Index, err)
+			}
+		}
+	})
+
+	// Pipe PTY bytes out to phone as soon as the pty DC is open.
 	go func() {
-		<-ptyConnected
+		select {
+		case <-ptyConnected:
+		case <-pctx.Done():
+			return
+		}
 		buf := make([]byte, 4096)
 		for {
 			n, err := pty.Read(buf)
 			if n > 0 {
-				// Respect DC buffered-amount thresholds to avoid OOM on the other side.
 				if err := ptyDC.Send(buf[:n]); err != nil {
 					log.Printf("pty DC send: %v", err)
 					cancel()
@@ -148,24 +223,16 @@ func Pair(ctx context.Context, wssURL string, pty *tmuxPty, sessionName string) 
 		}
 	}()
 
-	// ---- DC: sidechannel (Claude state events) ----
-	sideOpen := make(chan struct{})
-	var sideOnce sync.Once
-	sideDC.OnOpen(func() { sideOnce.Do(func() { close(sideOpen) }) })
-
+	// Spawn sidechannel watchers once the sidechannel is open.
 	go func() {
 		select {
 		case <-sideOpen:
 		case <-pctx.Done():
 			return
 		}
-		RunStateWatcher(pctx, sessionName, func(ev ClaudeEvent) {
-			b, err := json.Marshal(ev)
-			if err != nil {
-				return
-			}
-			_ = sideDC.SendText(string(b))
-		})
+		go RunStateWatcher(pctx, sessionName, emitter)
+		go RunWindowsWatcher(pctx, sessionName, emitter)
+		go RunPaneSizeWatcher(pctx, sessionName, pty, emitter)
 	}()
 
 	// ---- Signaling loop ----
@@ -185,11 +252,16 @@ func Pair(ctx context.Context, wssURL string, pty *tmuxPty, sessionName string) 
 	go func() {
 		defer close(doneSignal)
 		for {
-			ws.SetReadDeadline(time.Now().Add(5 * time.Minute))
-			_, raw, err := ws.ReadMessage()
+			ws.conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
+			_, raw, err := ws.conn.ReadMessage()
 			if err != nil {
 				if pctx.Err() == nil {
 					log.Printf("signaling read: %v", err)
+					// If we lose signaling before the PC is up, there's
+					// no way to recover this Pair — cancel so the main
+					// loop re-registers with a fresh WS instead of
+					// hanging forever on <-pctx.Done().
+					cancel()
 				}
 				return
 			}
@@ -236,28 +308,38 @@ func Pair(ctx context.Context, wssURL string, pty *tmuxPty, sessionName string) 
 		}
 	}()
 
+	// Keepalive: signaling Worker's DO garbage-collects idle sessions, so we
+	// ping every 25s while waiting / during the call. Ping/pong messages bump
+	// lastSeen on the server side.
+	keepalive := time.NewTicker(25 * time.Second)
+	defer keepalive.Stop()
+	keepaliveDone := make(chan struct{})
+	go func() {
+		defer close(keepaliveDone)
+		for {
+			select {
+			case <-pctx.Done():
+				return
+			case <-keepalive.C:
+				_ = ws.WriteJSON(map[string]any{"type": "ping"})
+			}
+		}
+	}()
+
 	// When guest is there, ship offer.
 	select {
 	case <-waitForGuest:
-		sendJSON(ws, map[string]any{"type": "offer", "sdp": offer.SDP})
+		_ = ws.WriteJSON(map[string]any{"type": "offer", "sdp": offer.SDP})
 	case <-pctx.Done():
+		<-keepaliveDone
 		return pctx.Err()
-	case <-time.After(5 * time.Minute):
-		return fmt.Errorf("no phone joined within 5 minutes")
+	case <-time.After(60 * time.Minute):
+		return fmt.Errorf("no phone joined within 1 hour")
 	}
 
 	// Wait for the session to end (either PC failure or signaling close).
 	<-pctx.Done()
-	sendJSON(ws, map[string]any{"type": "done"})
+	_ = ws.WriteJSON(map[string]any{"type": "done"})
 	<-doneSignal // let the reader exit cleanly
 	return nil
-}
-
-func sendJSON(ws *websocket.Conn, v any) {
-	data, err := json.Marshal(v)
-	if err != nil {
-		return
-	}
-	ws.SetWriteDeadline(time.Now().Add(5 * time.Second))
-	_ = ws.WriteMessage(websocket.TextMessage, data)
 }

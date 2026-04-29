@@ -21,3 +21,8 @@ helper/*.exe
 # Env / secrets
 .env
 .env.local
+
+# Build artefacts
+*.tsbuildinfo
+pwa/vite.config.js
+pwa/vite.config.d.ts

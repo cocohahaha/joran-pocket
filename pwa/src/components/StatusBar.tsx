@@ -1,19 +1,23 @@
 interface Props {
-  connectionState: "connecting" | "connected" | "disconnected" | "failed";
+  connectionState: "connecting" | "authenticating" | "connected" | "reconnecting" | "disconnected" | "failed";
   onDisconnect: () => void;
 }
 
 export function StatusBar({ connectionState, onDisconnect }: Props) {
   const dot = {
     connecting: "var(--accent)",
+    authenticating: "var(--accent)",
     connected: "var(--ok)",
+    reconnecting: "var(--accent)",
     disconnected: "var(--text-muted)",
     failed: "var(--danger)",
   }[connectionState];
 
   const label = {
     connecting: "连接中…",
+    authenticating: "认证中…",
     connected: "已连接",
+    reconnecting: "重连中…",
     disconnected: "已断开",
     failed: "连接失败",
   }[connectionState];
