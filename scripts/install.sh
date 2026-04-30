@@ -57,34 +57,44 @@ for d in /opt/homebrew/bin /usr/local/bin; do
   fi
 done
 
-# --- Signaling endpoint ---
-SIG_HOST="${POCKET_SIGNALING:-}"
-if [ -z "$SIG_HOST" ]; then
+# --- Pages / signaling endpoint ---
+# install.sh is the lightweight path: helper only, no Cloudflare deploy.
+# If you want this scripted end-to-end, run setup.sh instead — that one
+# deploys the Worker + Pages under your *own* Cloudflare account.
+PAGES_URL="${POCKET_PWA_URL:-${POCKET_SIGNALING:-}}"
+if [ -z "$PAGES_URL" ]; then
   cat <<EOF
 
  ──────────────────────────────────────────────────────────
-  设置信令服务器地址
+  你的 Cloudflare Pages 部署 URL
  ──────────────────────────────────────────────────────────
 
- pocket 需要知道你部署的 Cloudflare Worker 地址。
- 在你自己的 Cloudflare 账号下部过一次后，地址形如：
-     https://joran-pocket-signaling.<你的子域>.workers.dev
+ install.sh 只装 helper。Pages 必须先用 setup.sh 部到你 *自己的*
+ Cloudflare 账号下,或者你已经有别人部好的同源 URL 可以复用。
 
- 请把它粘过来：
+ 形如:
+     https://your-pocket-XXXXXXXX.pages.dev
+
+ 粘过来 (或者按 Ctrl-C 退出,改跑 scripts/setup.sh):
 EOF
-  read -r SIG_HOST
-  [ -z "$SIG_HOST" ] && err "signaling host is required"
+  read -r PAGES_URL
+  [ -z "$PAGES_URL" ] && err "Pages URL is required (or run scripts/setup.sh for end-to-end)"
 fi
 
-# Persist in shell rc.
+# Persist in shell rc + LaunchAgent env (set both — helper validates both).
 for rc in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile"; do
   [ -f "$rc" ] || continue
   if ! grep -q 'POCKET_SIGNALING' "$rc"; then
-    printf '\n# JORAN Pocket\nexport POCKET_SIGNALING=%q\n' "$SIG_HOST" >> "$rc"
-    ok "Added POCKET_SIGNALING to $rc"
+    {
+      printf '\n# JORAN Pocket\n'
+      printf 'export POCKET_SIGNALING=%q\n' "$PAGES_URL"
+      printf 'export POCKET_PWA_URL=%q\n'   "$PAGES_URL"
+    } >> "$rc"
+    ok "Added POCKET_SIGNALING / POCKET_PWA_URL to $rc"
   fi
 done
-export POCKET_SIGNALING="$SIG_HOST"
+export POCKET_SIGNALING="$PAGES_URL"
+export POCKET_PWA_URL="$PAGES_URL"
 
 # --- Deps: tmux ---
 command -v tmux >/dev/null || {

@@ -45,9 +45,15 @@ import (
 	"time"
 )
 
+// Defaults are intentionally empty — the deployer's own Worker / Pages
+// URLs are written into the LaunchAgent plist as POCKET_SIGNALING and
+// POCKET_PWA_URL by `scripts/setup.sh`. If you launch the binary by hand
+// without those env vars, helper exits with an error rather than silently
+// routing your traffic through whoever happens to own joran-pocket.pages.dev
+// (= the original repo author's free-tier quota).
 const (
-	defaultSignalingHost = "joran-pocket.pages.dev"
-	defaultPWAHost       = "https://joran-pocket.pages.dev"
+	defaultSignalingHost = ""
+	defaultPWAHost       = ""
 )
 
 var (
@@ -121,6 +127,26 @@ func main() {
 
 	signalingHTTP := normalizeSignalingURL(*flagSignaling)
 	pwaHost := strings.TrimRight(envOr("POCKET_PWA_URL", defaultPWAHost), "/")
+
+	// Hard-fail if the deployer hasn't pointed us at their own Cloudflare.
+	// Without these env vars the helper would either silently fail to
+	// connect (no host) or, worse, register against someone else's
+	// Cloudflare project. setup.sh writes both into the LaunchAgent plist.
+	if signalingHTTP == "" || signalingHTTP == "https://" || pwaHost == "" {
+		log.Fatalf(`POCKET_SIGNALING and POCKET_PWA_URL must point to YOUR OWN
+Cloudflare deployment. They look unset.
+
+Easiest fix: run the bootstrap script which deploys a Worker + Pages under
+your own free Cloudflare account and writes the URLs into the LaunchAgent:
+
+  curl -fsSL https://raw.githubusercontent.com/cocohahaha/joran-pocket/main/scripts/setup.sh | bash
+
+Or set them manually:
+
+  export POCKET_SIGNALING=https://your-pocket.pages.dev
+  export POCKET_PWA_URL=https://your-pocket.pages.dev
+  pocket`)
+	}
 
 	// Boot reset — link is never live until the user opts in via
 	// `pocket attach`, even if a previous active session left state on disk.
@@ -480,6 +506,21 @@ func printPairing(code, signaling, pwaHost string, shouldIMessage bool) {
 func runInstall() {
 	signalingURL := normalizeSignalingURL(envOr("POCKET_SIGNALING", defaultSignalingHost))
 	pwaURL := strings.TrimRight(envOr("POCKET_PWA_URL", defaultPWAHost), "/")
+	// `pocket install` writes a LaunchAgent plist that bakes these URLs
+	// into helper's environment. Refusing the install when they're empty
+	// is the only thing standing between a user accidentally deploying a
+	// helper that would silently shoot every connection at whoever owns
+	// the (formerly default) joran-pocket.pages.dev host.
+	if signalingURL == "" || signalingURL == "https://" || pwaURL == "" {
+		log.Fatalf(`POCKET_SIGNALING / POCKET_PWA_URL not set. Run setup.sh first
+to deploy your own Cloudflare Worker + Pages and capture the URLs:
+
+  curl -fsSL https://raw.githubusercontent.com/cocohahaha/joran-pocket/main/scripts/setup.sh | bash
+
+Or set them manually before pocket install:
+  export POCKET_SIGNALING=https://your-pocket.pages.dev
+  export POCKET_PWA_URL=https://your-pocket.pages.dev`)
+	}
 	if err := installLaunchAgent(signalingURL, pwaURL); err != nil {
 		log.Fatalf("install: %v", err)
 	}

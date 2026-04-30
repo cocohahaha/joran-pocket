@@ -2,6 +2,8 @@
 
 **手机 Safari 直连你 Mac 的终端 / Claude Code — WebRTC P2P，零账号、零订阅、零 VPN 冲突。**
 
+> 🔐 **每个用户在自己 Cloudflare 账号下部署**。setup.sh 用你账号的免费配额,作者看不到你的会话,你的免费额度只服务你一人。
+
 ```
 iPhone Safari                  (公网)                     你的 Mac
    │                                                          │
@@ -26,7 +28,7 @@ iPhone Safari                  (公网)                     你的 Mac
 在 Mac Terminal 里粘贴：
 
 ```bash
-curl -fsSL https://joran-pocket.pages.dev/setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/cocohahaha/joran-pocket/main/scripts/setup.sh | bash
 ```
 
 脚本会引导你：
@@ -105,15 +107,15 @@ joran-pocket/
 适合:第一次跑这个项目的人,自己有 Cloudflare 账号。
 
 ```bash
-curl -fsSL https://joran-pocket.pages.dev/setup.sh | bash
+curl -fsSL https://raw.githubusercontent.com/cocohahaha/joran-pocket/main/scripts/setup.sh | bash
 ```
 
 ### B. 复用别人部署的 Worker (轻量)
 适合:朋友已经部署过 Worker + Pages,你只想装 helper。
 
 ```bash
-curl -fsSL https://joran-pocket.pages.dev/install.sh | bash
-# 提示输入 POCKET_SIGNALING URL,粘贴对方部署的 workers.dev 地址
+curl -fsSL https://raw.githubusercontent.com/cocohahaha/joran-pocket/main/scripts/install.sh | bash
+# 提示输入 POCKET_SIGNALING URL,粘贴对方部署的 *.pages.dev 地址
 ```
 
 ### C. 从源码 (开发者)
